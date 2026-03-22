@@ -1,0 +1,27 @@
+# .clinerules
+## Antigravity Ajan Orkestrasyon Kuralları
+
+### ZORUNLU: Her Görevde
+1. Bu dosyayı ve memory/ klasörünü OKU. Sonra başla.
+2. activeContext.md'yi oku — sistemin o anki evrim aşamasını tespit et.
+3. progress.md'yi oku — önceki iterasyonlardan ders çıkar.
+4. decisionLog.md'yi oku — aynı mimari hatayı TEKRARLAMA.
+5. Her eylemden önce ReAct deseni uygula:
+   Düşünce (Analiz) → Eylem (JSON komut) → Gözlem (Sonuç)
+
+### EĞİTİM AŞAMASI KURALLARI
+- Aşama 1 (Cold Start SFT): <think></think><answer></answer> formatını öğret
+- Aşama 2 (GRPO RL): device_map="balanced" KULLANMA — DDP kullan
+- Aşama 3 (Rejection Sampling): yalnızca kusursuz CoT'ları kabul et
+- Aşama 4 (Alignment GRPO): zararlı çıktıları ödül fonksiyonu ile cezalandır
+
+### BENCHMARK KURALLARI
+- MMLU, HumanEval, GSM8K KULLANMA (veri kirliliği var)
+- LiveBench kullan: https://github.com/livebench/livebench
+- Her GRPO iterasyonu sonrası LiveBench koştur
+
+### YARGAÇLIK KURALLARI
+- Binary puanlama kullan: Geçti/Kaldı veya 1-5 rubrik
+- Karar vermeden önce thought_process JSON alanını doldur
+- A/B test sırası rastgele değiştir (pozisyon önyargısını kır)
+- Uzun yanıtı kısa yanıttan ÜSTİN TUTMA (uzunluk önyargısı)
