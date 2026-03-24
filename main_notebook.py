@@ -126,10 +126,10 @@ print("\n" + "=" * 60)
 print("CELL 3: Memory Bank & Checkpoint")
 print("=" * 60)
 
-from scripts.memory_bank import load_memory_bank, format_memory_summary
+from scripts.memory_bank import memory_bank_yukle, memory_bank_sistem_prompt_olustur
 
-memory = load_memory_bank(REPO_DIR)
-print(format_memory_summary(memory))
+memory = memory_bank_yukle(REPO_DIR)
+print(memory_bank_sistem_prompt_olustur(memory))
 
 from scripts.config import HF_USER, HF_CHAT_REPO
 from huggingface_hub import HfApi, snapshot_download
