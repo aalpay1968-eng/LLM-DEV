@@ -98,10 +98,12 @@ if not os.path.exists(f"{REPO_DIR}/.git"):
                    check=False, capture_output=True)
     if not os.path.exists(REPO_DIR):
         os.makedirs(REPO_DIR, exist_ok=True)
+else:
+    subprocess.run(["git", "-C", REPO_DIR, "pull", "--ff-only"],
+                   check=False, capture_output=True)
 
 sys.path.insert(0, REPO_DIR)
 from scripts.config import GIT_USER_EMAIL, GIT_USER_NAME
-else:
     subprocess.run(["git", "-C", REPO_DIR, "pull", "--ff-only"],
                    check=False, capture_output=True)
 
