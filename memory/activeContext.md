@@ -1,16 +1,15 @@
 # activeContext.md
-Son güncelleme: 2026-03-22T18:51:00Z
+Son güncelleme: 2026-03-24 19:15 UTC
 
-## Mevcut Aşama
-cold_start — İlk seans, henüz eğitim başlamadı.
+## Mevcut Durum
+- Proje İskeleti: Tamamlandı.
+- Script Standardizasyonu: Tamamlandı (config, dev_llm, memory_bank, training_phases).
+- Aktif Aşama: **Phase 1 (Cold Start SFT)**
 
-## Model Durumu
-- Base model: unsloth/Qwen3-8B-bnb-4bit
-- Checkpoint: Henüz yok (ilk seans)
-- LiveBench: Henüz ölçülmedi
+## Hedefler
+- Kaggle üzerinde `main_notebook.py` çalıştırılarak SFT verisi üretilmesi ve eğitimin başlatılması.
+- Qwen-8B modelinin <think><answer> formatına ısındırılması.
 
-## Sonraki Adım
-1. Kaggle notebook'u oluştur ve çalıştır
-2. Cold Start SFT (Aşama 1) başlat
-3. İlk LiveBench ölçümü yap
-4. Adapter'ı HF Hub'a yükle
+## Kararlar
+- `main_notebook.py` ana giriş noktası olarak belirlendi.
+- Unsloth 4-bit optimizasyonu kullanılacak.
