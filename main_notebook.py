@@ -83,8 +83,8 @@ os.environ["WORKING_DIR"] = WORKING_DIR
 os.environ["REPO_DIR"] = REPO_DIR
 os.environ["OUTPUTS_DIR"] = OUTPUTS_DIR
 
-from scripts.config import (GITHUB_USER, GITHUB_REPO,
-                             GIT_USER_EMAIL, GIT_USER_NAME)
+GITHUB_USER = "aalpay1968-eng"
+GITHUB_REPO = "LLM-DEV"
 
 GH_PAT = os.environ.get("GITHUB_PAT", "")
 REPO_URL = (
@@ -98,6 +98,9 @@ if not os.path.exists(f"{REPO_DIR}/.git"):
                    check=False, capture_output=True)
     if not os.path.exists(REPO_DIR):
         os.makedirs(REPO_DIR, exist_ok=True)
+
+sys.path.insert(0, REPO_DIR)
+from scripts.config import GIT_USER_EMAIL, GIT_USER_NAME
 else:
     subprocess.run(["git", "-C", REPO_DIR, "pull", "--ff-only"],
                    check=False, capture_output=True)
