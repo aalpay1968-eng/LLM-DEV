@@ -367,7 +367,13 @@ from scripts.training_phases import phase1_cold_start_sft, phase2_grpo_rl
 sonuclar = []
 aktif_asama = memory.get("activeContext", {}).get("asama", "phase1")
 
-# --- Phase 1: Cold Start SFT ---
+# Continuous mode: skip Phase 1 if we already have a trained adapter
+has_prev_adapter = onceki_adapter and os.path.exists(str(onceki_adapter))
+if has_prev_adapter:
+    print("[CONTINUOUS] Previous adapter found, skipping Phase 1.")
+    aktif_asama = "phase2"
+
+# --- Phase 1: Cold Start SFT (only on first run) ---
 if aktif_asama in ("phase1", "setup"):
     print("\n>> Phase 1: Cold Start SFT starting...")
     sonuc1 = phase1_cold_start_sft(
@@ -381,18 +387,20 @@ if aktif_asama in ("phase1", "setup"):
     torch.cuda.empty_cache()
     print("[OK] Phase 1 completed.")
 
-# --- Phase 2: GRPO RL (Auto-enabled) ---
-print("\n>> Phase 2: GRPO Reinforcement Learning starting...")
-sonuc2 = phase2_grpo_rl(
-    model=model,
-    tokenizer=tokenizer,
-    dev_client=dev_client,
-    dev_model=dev_model_name,
-)
-sonuclar.append(sonuc2)
-gc.collect()
-torch.cuda.empty_cache()
-print("[OK] Phase 2 GRPO completed.")
+# --- Phase 2: GRPO RL (continuous, runs every restart) ---
+N_GRPO_ROUNDS = 3  # Multiple GRPO rounds per kernel session
+for grpo_round in range(N_GRPO_ROUNDS):
+    print(f"\n>> Phase 2: GRPO Round {grpo_round + 1}/{N_GRPO_ROUNDS}...")
+    sonuc2 = phase2_grpo_rl(
+        model=model,
+        tokenizer=tokenizer,
+        dev_client=dev_client,
+        dev_model=dev_model_name,
+    )
+    sonuclar.append(sonuc2)
+    gc.collect()
+    torch.cuda.empty_cache()
+    print(f"[OK] GRPO Round {grpo_round + 1} completed.")
 
 
 # =====================================================
