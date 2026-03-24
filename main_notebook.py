@@ -104,8 +104,6 @@ else:
 
 sys.path.insert(0, REPO_DIR)
 from scripts.config import GIT_USER_EMAIL, GIT_USER_NAME
-    subprocess.run(["git", "-C", REPO_DIR, "pull", "--ff-only"],
-                   check=False, capture_output=True)
 
 subprocess.run(["git", "-C", REPO_DIR, "config",
                 "user.email", GIT_USER_EMAIL],
