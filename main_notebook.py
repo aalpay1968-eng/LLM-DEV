@@ -52,6 +52,7 @@ if wandb_key:
 
 # Package installs
 PACKAGES = [
+    "unsloth_zoo",
     "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
     "huggingface_hub", "trl>=0.12", "gradio>=4.0", "openai",
     "wandb", "matplotlib",
@@ -59,8 +60,7 @@ PACKAGES = [
 for pkg in PACKAGES:
     try:
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-q",
-             "--no-deps" if "unsloth" in pkg else "-q", pkg],
+            [sys.executable, "-m", "pip", "install", "-q", pkg],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError:
