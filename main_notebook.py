@@ -206,13 +206,21 @@ print("\n" + "=" * 60)
 print("CELL 5: Developer LLM Connection")
 print("=" * 60)
 
-from scripts.developer_llm import create_dev_client
+from scripts.developer_llm import developer_client_olustur
+from scripts.config import DEVELOPER_APIS
+from scripts.memory_bank import memory_bank_sistem_prompt_olustur as _prompt_fn
 
-dev_client, dev_model_name = create_dev_client()
-if dev_client:
+dev_client = None
+dev_model_name = None
+dev_extra_params = {}
+dev_sistem_prompt = ""
+try:
+    dev_client, dev_model_name, dev_extra_params, dev_sistem_prompt = (
+        developer_client_olustur(memory, DEVELOPER_APIS, _prompt_fn)
+    )
     print(f"[OK] Developer LLM: {dev_model_name}")
-else:
-    print("[WARN] Dev LLM not available, offline mode.")
+except Exception as e:
+    print(f"[WARN] Dev LLM not available, offline mode: {e}")
 
 
 # =====================================================
@@ -368,7 +376,12 @@ print("=" * 60)
 from scripts.training_phases import phase1_cold_start_sft, phase2_grpo_rl
 
 sonuclar = []
-aktif_asama = memory.get("activeContext", {}).get("asama", "phase1")
+# memory["activeContext"] is a string, check for phase keyword
+_active_ctx = memory.get("activeContext", "")
+if "phase2" in _active_ctx:
+    aktif_asama = "phase2"
+else:
+    aktif_asama = "phase1"
 
 # Continuous mode: skip Phase 1 if we already have a trained adapter
 has_prev_adapter = onceki_adapter and os.path.exists(str(onceki_adapter))
@@ -379,13 +392,16 @@ if has_prev_adapter:
 # --- Phase 1: Cold Start SFT (only on first run) ---
 if aktif_asama in ("phase1", "setup"):
     print("\n>> Phase 1: Cold Start SFT starting...")
-    sonuc1 = phase1_cold_start_sft(
-        model=model,
-        tokenizer=tokenizer,
-        dev_client=dev_client,
-        dev_model=dev_model_name,
-    )
-    sonuclar.append(sonuc1)
+    try:
+        sonuc1 = phase1_cold_start_sft(
+            model=model,
+            tokenizer=tokenizer,
+            dev_client=dev_client,
+            dev_model=dev_model_name,
+        )
+        sonuclar.append(sonuc1)
+    except Exception as e:
+        print(f"[ERROR] Phase 1 failed: {e}")
     gc.collect()
     torch.cuda.empty_cache()
     print("[OK] Phase 1 completed.")
@@ -394,13 +410,16 @@ if aktif_asama in ("phase1", "setup"):
 N_GRPO_ROUNDS = 3  # Multiple GRPO rounds per kernel session
 for grpo_round in range(N_GRPO_ROUNDS):
     print(f"\n>> Phase 2: GRPO Round {grpo_round + 1}/{N_GRPO_ROUNDS}...")
-    sonuc2 = phase2_grpo_rl(
-        model=model,
-        tokenizer=tokenizer,
-        dev_client=dev_client,
-        dev_model=dev_model_name,
-    )
-    sonuclar.append(sonuc2)
+    try:
+        sonuc2 = phase2_grpo_rl(
+            model=model,
+            tokenizer=tokenizer,
+            dev_client=dev_client,
+            dev_model=dev_model_name,
+        )
+        sonuclar.append(sonuc2)
+    except Exception as e:
+        print(f"[ERROR] GRPO Round {grpo_round + 1} failed: {e}")
     gc.collect()
     torch.cuda.empty_cache()
     print(f"[OK] GRPO Round {grpo_round + 1} completed.")
