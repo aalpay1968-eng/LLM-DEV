@@ -216,20 +216,9 @@ try:
         log(f"GPU: {gpu_name} (arch: {gpu_arch})")
 
         if cap_major < 7:
-            log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Reinstalling PyTorch cu118...", "WARN")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-q",
-                "torch==2.5.1+cu118", "torchvision==0.20.1+cu118",
-                "torchaudio==2.5.1+cu118",
-                "--index-url", "https://download.pytorch.org/whl/cu118",
-            ])
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-q",
-                "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            log("PyTorch+CUDA 11.8 reinstalled for P100 compatibility.")
+            log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Unsloth will fallback to basic attention (SDPA).", "WARN")
         else:
-            log(f"GPU {gpu_name} ({gpu_arch}) is compatible.")
+            log(f"GPU {gpu_name} ({gpu_arch}) is fully compatible.")
     else:
         log("No CUDA GPU available!", "ERROR")
         sys.exit(1)
