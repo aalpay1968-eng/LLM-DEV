@@ -216,7 +216,17 @@ try:
         log(f"GPU: {gpu_name} (arch: {gpu_arch})")
 
         if cap_major < 7:
-            log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Unsloth will fallback to basic attention (SDPA).", "WARN")
+            log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Reinstalling Official PyTorch to restore P100 support...", "WARN")
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "-q", "--force-reinstall",
+                "torch==2.5.1+cu118", "torchvision==0.20.1+cu118", "torchaudio==2.5.1+cu118", "triton",
+                "--index-url", "https://download.pytorch.org/whl/cu118",
+            ])
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "-q",
+                "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            log("PyTorch restored for P100 compatibility.")
         else:
             log(f"GPU {gpu_name} ({gpu_arch}) is fully compatible.")
     else:
