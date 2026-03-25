@@ -153,6 +153,41 @@ if hf_token:
 
 
 # =====================================================
+# CELL 3.5: GPU Compatibility Check
+# =====================================================
+print("\n" + "=" * 60)
+print("CELL 3.5: GPU Compatibility Check")
+print("=" * 60)
+
+if torch.cuda.is_available():
+    gpu_name = torch.cuda.get_device_name(0)
+    cap_major, cap_minor = torch.cuda.get_device_capability(0)
+    gpu_arch = f"sm_{cap_major}{cap_minor}"
+    print(f"[INFO] GPU: {gpu_name} (arch: {gpu_arch})")
+
+    if cap_major < 7:
+        print(f"[WARN] {gpu_name} ({gpu_arch}) is older than sm_70.")
+        print("[WARN] Reinstalling PyTorch with CUDA 11.8 for P100 support...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "-q",
+            "torch==2.5.1+cu118", "torchvision==0.20.1+cu118",
+            "torchaudio==2.5.1+cu118",
+            "--index-url", "https://download.pytorch.org/whl/cu118",
+        ])
+        # Reinstall unsloth after torch downgrade
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "-q",
+            "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("[OK] PyTorch+CUDA 11.8 reinstalled for P100 compatibility.")
+    else:
+        print(f"[OK] GPU {gpu_name} ({gpu_arch}) is compatible.")
+else:
+    print("[ERROR] No CUDA GPU available!")
+    sys.exit(1)
+
+
+# =====================================================
 # CELL 4: Model Loading
 # =====================================================
 print("\n" + "=" * 60)
