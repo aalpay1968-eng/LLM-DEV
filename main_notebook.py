@@ -3,19 +3,38 @@
 LLM Gelistiren LLM -- Main Notebook Script (Phase 2 GRPO + Live Chat)
 =====================================================================
 Run as:  !python /kaggle/working/repo/main_notebook.py
+
+Defensive version: every cell wrapped in try/except with file-based logging.
 """
 
-import os, sys, json, gc, torch, subprocess, threading, re, time
-from datetime import datetime, timezone
+import os, sys, json, gc, traceback, time
+
+# =====================================================
+# ERROR LOGGING -- always visible in kernel output
+# =====================================================
+LOG_FILE = "/kaggle/working/llm_dev_debug.log"
+
+def log(msg, level="INFO"):
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] [{level}] {msg}"
+    print(line, flush=True)
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+def log_exception(cell_name):
+    tb = traceback.format_exc()
+    log(f"{cell_name} FAILED:\n{tb}", level="ERROR")
+
 
 # =====================================================
 # CELL 1: Environment Setup
 # =====================================================
-print("=" * 60)
-print("CELL 1: Environment Setup")
-print("=" * 60)
+log("=" * 60)
+log("CELL 1: Environment Setup")
 
-# Kaggle secrets -> env vars
 try:
     from kaggle_secrets import UserSecretsClient
     secrets = UserSecretsClient()
@@ -34,28 +53,29 @@ try:
                 os.environ[env_name] = val
         except Exception:
             pass
-    print("[OK] Kaggle secrets loaded.")
+    log("Kaggle secrets loaded.")
 except ImportError:
-    print("[INFO] No kaggle_secrets, using env vars.")
+    log("No kaggle_secrets, using env vars.")
 
-# W&B setup
-wandb_key = os.environ.get("WANDB_API_KEY", "")
-if wandb_key:
-    try:
+# W&B setup (optional, don't crash if it fails)
+try:
+    wandb_key = os.environ.get("WANDB_API_KEY", "")
+    if wandb_key:
         import wandb
         wandb.login(key=wandb_key)
         wandb.init(project="llm-dev", name="phase2-grpo",
-                   tags=["grpo", "qwen3-8b"])
-        print("[OK] W&B initialized.")
-    except Exception as e:
-        print(f"[WARN] W&B init failed: {e}")
+                   tags=["grpo", "qwen3-8b"], resume="allow")
+        log("W&B initialized.")
+except Exception as e:
+    log(f"W&B init failed (non-fatal): {e}", "WARN")
 
 # Package installs
+import subprocess
 PACKAGES = [
     "unsloth_zoo",
     "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
     "huggingface_hub", "trl>=0.12", "gradio>=4.0", "openai",
-    "wandb", "matplotlib",
+    "matplotlib",
 ]
 for pkg in PACKAGES:
     try:
@@ -64,17 +84,21 @@ for pkg in PACKAGES:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError:
-        print(f"[WARN] {pkg} install failed, continuing.")
+        log(f"Package install failed: {pkg}", "WARN")
 
-print("[OK] Packages ready.")
+log("Packages ready.")
+
+import torch
+log(f"PyTorch: {torch.__version__} | CUDA: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    log(f"GPU: {torch.cuda.get_device_name(0)} | VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
 
 
 # =====================================================
 # CELL 2: Project Structure & Git Clone
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 2: Project Structure & Git Clone")
-print("=" * 60)
+log("=" * 60)
+log("CELL 2: Project Structure & Git Clone")
 
 WORKING_DIR = "/kaggle/working"
 REPO_DIR = f"{WORKING_DIR}/repo"
@@ -86,238 +110,257 @@ os.environ["OUTPUTS_DIR"] = OUTPUTS_DIR
 GITHUB_USER = "aalpay1968-eng"
 GITHUB_REPO = "LLM-DEV"
 
-GH_PAT = os.environ.get("GITHUB_PAT", "")
-REPO_URL = (
-    f"https://{GH_PAT}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git"
-    if GH_PAT
-    else f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}.git"
-)
+try:
+    GH_PAT = os.environ.get("GITHUB_PAT", "")
+    REPO_URL = (
+        f"https://{GH_PAT}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git"
+        if GH_PAT
+        else f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}.git"
+    )
 
-if not os.path.exists(f"{REPO_DIR}/.git"):
-    subprocess.run(["git", "clone", "--depth", "1", REPO_URL, REPO_DIR],
+    if not os.path.exists(f"{REPO_DIR}/.git"):
+        subprocess.run(["git", "clone", "--depth", "1", REPO_URL, REPO_DIR],
+                       check=False, capture_output=True)
+        if not os.path.exists(REPO_DIR):
+            os.makedirs(REPO_DIR, exist_ok=True)
+    else:
+        subprocess.run(["git", "-C", REPO_DIR, "pull", "--ff-only"],
+                       check=False, capture_output=True)
+
+    sys.path.insert(0, REPO_DIR)
+
+    # Git config -- use hardcoded values as fallback
+    git_email = "aalpay1968@gmail.com"
+    git_name = "aalpay1968-eng"
+    try:
+        from scripts.config import GIT_USER_EMAIL, GIT_USER_NAME
+        git_email = GIT_USER_EMAIL
+        git_name = GIT_USER_NAME
+    except ImportError:
+        log("scripts.config import failed, using defaults", "WARN")
+
+    subprocess.run(["git", "-C", REPO_DIR, "config", "user.email", git_email],
                    check=False, capture_output=True)
-    if not os.path.exists(REPO_DIR):
-        os.makedirs(REPO_DIR, exist_ok=True)
-else:
-    subprocess.run(["git", "-C", REPO_DIR, "pull", "--ff-only"],
+    subprocess.run(["git", "-C", REPO_DIR, "config", "user.name", git_name],
                    check=False, capture_output=True)
 
-sys.path.insert(0, REPO_DIR)
-from scripts.config import GIT_USER_EMAIL, GIT_USER_NAME
-
-subprocess.run(["git", "-C", REPO_DIR, "config",
-                "user.email", GIT_USER_EMAIL],
-               check=False, capture_output=True)
-subprocess.run(["git", "-C", REPO_DIR, "config",
-                "user.name", GIT_USER_NAME],
-               check=False, capture_output=True)
-
-for d in ["memory", "results", "logs", "scripts"]:
-    os.makedirs(f"{REPO_DIR}/{d}", exist_ok=True)
-os.makedirs(OUTPUTS_DIR, exist_ok=True)
-sys.path.insert(0, REPO_DIR)
-print(f"[OK] Repo: {REPO_DIR}")
+    for d in ["memory", "results", "logs", "scripts"]:
+        os.makedirs(f"{REPO_DIR}/{d}", exist_ok=True)
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
+    log(f"Repo: {REPO_DIR}")
+except Exception:
+    log_exception("CELL 2")
 
 
 # =====================================================
 # CELL 3: Memory Bank & Checkpoint
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 3: Memory Bank & Checkpoint")
-print("=" * 60)
+log("=" * 60)
+log("CELL 3: Memory Bank & Checkpoint")
 
-from scripts.memory_bank import memory_bank_yukle, memory_bank_sistem_prompt_olustur
-
-memory = memory_bank_yukle(REPO_DIR)
-print(memory_bank_sistem_prompt_olustur(memory))
-
-from scripts.config import HF_USER, HF_CHAT_REPO
-from huggingface_hub import HfApi, snapshot_download
-
-hf_token = os.environ.get("HF_TOKEN", "")
+memory = {}
 onceki_adapter = None
 
-if hf_token:
+try:
+    # Try Turkish names first, fall back to English aliases
     try:
-        api = HfApi(token=hf_token)
-        info = api.repo_info(
-            repo_id=f"{HF_USER}/{HF_CHAT_REPO}", token=hf_token)
-        onceki_adapter = snapshot_download(
-            repo_id=f"{HF_USER}/{HF_CHAT_REPO}",
-            local_dir=f"{WORKING_DIR}/prev_adapter",
-            token=hf_token,
-        )
-        print(f"[OK] Previous adapter loaded: {onceki_adapter}")
-    except Exception as e:
-        print(f"[INFO] No previous adapter: {e}")
+        from scripts.memory_bank import memory_bank_yukle, memory_bank_sistem_prompt_olustur
+    except ImportError:
+        from scripts.memory_bank import load_memory_bank as memory_bank_yukle
+        from scripts.memory_bank import format_memory_summary as memory_bank_sistem_prompt_olustur
+
+    memory = memory_bank_yukle(REPO_DIR)
+    log("Memory Bank loaded.")
+except Exception:
+    log_exception("CELL 3 Memory Bank")
+    memory = {"clinerules": "", "projectbrief": "", "techContext": "",
+              "systemPatterns": "", "activeContext": "phase2",
+              "progress": "", "decisionLog": ""}
+    log("Using empty memory bank as fallback.", "WARN")
+
+try:
+    from huggingface_hub import HfApi, snapshot_download
+    hf_token = os.environ.get("HF_TOKEN", "")
+    HF_USER = "aalpay1968"
+    HF_CHAT_REPO = "target-llm-chat"
+
+    if hf_token:
+        try:
+            api = HfApi(token=hf_token)
+            info = api.repo_info(repo_id=f"{HF_USER}/{HF_CHAT_REPO}", token=hf_token)
+            onceki_adapter = snapshot_download(
+                repo_id=f"{HF_USER}/{HF_CHAT_REPO}",
+                local_dir=f"{WORKING_DIR}/prev_adapter",
+                token=hf_token,
+            )
+            log(f"Previous adapter loaded: {onceki_adapter}")
+        except Exception as e:
+            log(f"No previous adapter: {e}", "WARN")
+except Exception:
+    log_exception("CELL 3 Checkpoint")
+    HF_USER = "aalpay1968"
+    HF_CHAT_REPO = "target-llm-chat"
 
 
 # =====================================================
 # CELL 3.5: GPU Compatibility Check
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 3.5: GPU Compatibility Check")
-print("=" * 60)
+log("=" * 60)
+log("CELL 3.5: GPU Compatibility Check")
 
-if torch.cuda.is_available():
-    gpu_name = torch.cuda.get_device_name(0)
-    cap_major, cap_minor = torch.cuda.get_device_capability(0)
-    gpu_arch = f"sm_{cap_major}{cap_minor}"
-    print(f"[INFO] GPU: {gpu_name} (arch: {gpu_arch})")
+try:
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        cap_major, cap_minor = torch.cuda.get_device_capability(0)
+        gpu_arch = f"sm_{cap_major}{cap_minor}"
+        log(f"GPU: {gpu_name} (arch: {gpu_arch})")
 
-    if cap_major < 7:
-        print(f"[WARN] {gpu_name} ({gpu_arch}) is older than sm_70.")
-        print("[WARN] Reinstalling PyTorch with CUDA 11.8 for P100 support...")
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "-q",
-            "torch==2.5.1+cu118", "torchvision==0.20.1+cu118",
-            "torchaudio==2.5.1+cu118",
-            "--index-url", "https://download.pytorch.org/whl/cu118",
-        ])
-        # Reinstall unsloth after torch downgrade
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "-q",
-            "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("[OK] PyTorch+CUDA 11.8 reinstalled for P100 compatibility.")
+        if cap_major < 7:
+            log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Reinstalling PyTorch cu118...", "WARN")
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "-q",
+                "torch==2.5.1+cu118", "torchvision==0.20.1+cu118",
+                "torchaudio==2.5.1+cu118",
+                "--index-url", "https://download.pytorch.org/whl/cu118",
+            ])
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "-q",
+                "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            log("PyTorch+CUDA 11.8 reinstalled for P100 compatibility.")
+        else:
+            log(f"GPU {gpu_name} ({gpu_arch}) is compatible.")
     else:
-        print(f"[OK] GPU {gpu_name} ({gpu_arch}) is compatible.")
-else:
-    print("[ERROR] No CUDA GPU available!")
-    sys.exit(1)
+        log("No CUDA GPU available!", "ERROR")
+        sys.exit(1)
+except Exception:
+    log_exception("CELL 3.5")
+    log("GPU check failed, attempting to continue...", "WARN")
 
 
 # =====================================================
 # CELL 4: Model Loading
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 4: Model Loading")
-print("=" * 60)
+log("=" * 60)
+log("CELL 4: Model Loading")
 
-from unsloth import FastLanguageModel
-
-MAX_SEQ = 4096
-os.environ["MAX_SEQ"] = str(MAX_SEQ)
-
+model = None
+tokenizer = None
 base_model_name = "unsloth/Qwen3-8B-unsloth-bnb-4bit"
 
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name=base_model_name,
-    max_seq_length=MAX_SEQ,
-    load_in_4bit=True,
-    dtype=None,
-    trust_remote_code=True,
-)
+try:
+    from unsloth import FastLanguageModel
 
-if onceki_adapter and os.path.exists(str(onceki_adapter)):
-    from peft import PeftModel
-    model = PeftModel.from_pretrained(model, onceki_adapter)
-    print("[OK] Previous LoRA adapter merged.")
+    MAX_SEQ = 4096
+    os.environ["MAX_SEQ"] = str(MAX_SEQ)
 
-model = FastLanguageModel.get_peft_model(
-    model,
-    r=32,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                     "gate_proj", "up_proj", "down_proj"],
-    lora_alpha=32,
-    lora_dropout=0,
-    bias="none",
-    use_gradient_checkpointing="unsloth",
-    random_state=42,
-)
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=base_model_name,
+        max_seq_length=MAX_SEQ,
+        load_in_4bit=True,
+        dtype=None,
+        trust_remote_code=True,
+    )
 
-trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-total = sum(p.numel() for p in model.parameters())
-print(f"[OK] Model loaded: {base_model_name}")
-print(f"   Trainable: {trainable:,} / {total:,} "
-      f"({100*trainable/total:.2f}%)")
-print(f"   VRAM: {torch.cuda.memory_allocated()/1e9:.1f} GB")
+    if onceki_adapter and os.path.exists(str(onceki_adapter)):
+        try:
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(model, onceki_adapter)
+            log("Previous LoRA adapter merged.")
+        except Exception as e:
+            log(f"LoRA merge failed (non-fatal): {e}", "WARN")
+
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=32,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                         "gate_proj", "up_proj", "down_proj"],
+        lora_alpha=32,
+        lora_dropout=0,
+        bias="none",
+        use_gradient_checkpointing="unsloth",
+        random_state=42,
+    )
+
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total = sum(p.numel() for p in model.parameters())
+    log(f"Model loaded: {base_model_name}")
+    log(f"  Trainable: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)")
+    log(f"  VRAM: {torch.cuda.memory_allocated()/1e9:.1f} GB")
+except Exception:
+    log_exception("CELL 4")
+    log("Model loading failed! Cannot continue training.", "ERROR")
 
 
 # =====================================================
 # CELL 5: Developer LLM Connection
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 5: Developer LLM Connection")
-print("=" * 60)
-
-from scripts.developer_llm import developer_client_olustur
-from scripts.config import DEVELOPER_APIS
-from scripts.memory_bank import memory_bank_sistem_prompt_olustur as _prompt_fn
+log("=" * 60)
+log("CELL 5: Developer LLM Connection")
 
 dev_client = None
 dev_model_name = None
-dev_extra_params = {}
-dev_sistem_prompt = ""
+
 try:
+    from scripts.developer_llm import developer_client_olustur
+    from scripts.config import DEVELOPER_APIS
+    from scripts.memory_bank import memory_bank_sistem_prompt_olustur as _prompt_fn
+
     dev_client, dev_model_name, dev_extra_params, dev_sistem_prompt = (
         developer_client_olustur(memory, DEVELOPER_APIS, _prompt_fn)
     )
-    print(f"[OK] Developer LLM: {dev_model_name}")
+    log(f"Developer LLM: {dev_model_name}")
 except Exception as e:
-    print(f"[WARN] Dev LLM not available, offline mode: {e}")
+    log(f"Dev LLM not available, offline mode: {e}", "WARN")
 
 
 # =====================================================
 # CELL 6: Live Chat Interface (Gradio - Background)
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 6: Live Chat Interface (Background)")
-print("=" * 60)
+log("=" * 60)
+log("CELL 6: Live Chat Interface (Background)")
 
-# --- Intelligence scoring helpers ---
+import re, threading
+
 _chat_scores = []
 
-
 def score_response(response_text):
-    """Score a model response for reasoning quality."""
     score = 0.0
     details = {}
-
-    # 1. Format check: <think>...</think><answer>...</answer>
-    has_think = bool(re.search(r"<think>.*?</think>", response_text,
-                               re.DOTALL))
-    has_answer = bool(re.search(r"<answer>.*?</answer>", response_text,
-                                re.DOTALL))
+    has_think = bool(re.search(r"<think>.*?</think>", response_text, re.DOTALL))
+    has_answer = bool(re.search(r"<answer>.*?</answer>", response_text, re.DOTALL))
     details["format"] = 1.0 if (has_think and has_answer) else 0.0
     score += details["format"] * 0.3
-
-    # 2. Reasoning depth (think block length)
-    think_match = re.search(r"<think>(.*?)</think>", response_text,
-                            re.DOTALL)
+    think_match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
     if think_match:
         think_len = len(think_match.group(1).strip().split())
         details["reasoning_depth"] = min(think_len / 50.0, 1.0)
     else:
         details["reasoning_depth"] = 0.0
     score += details["reasoning_depth"] * 0.3
-
-    # 3. Answer clarity (answer block conciseness)
-    answer_match = re.search(r"<answer>(.*?)</answer>", response_text,
-                             re.DOTALL)
+    answer_match = re.search(r"<answer>(.*?)</answer>", response_text, re.DOTALL)
     if answer_match:
         answer_len = len(answer_match.group(1).strip().split())
         details["answer_clarity"] = min(answer_len / 20.0, 1.0)
     else:
         details["answer_clarity"] = 0.0
     score += details["answer_clarity"] * 0.2
-
-    # 4. Language consistency (penalize mixed TR/EN)
-    tr_words = len(re.findall(
-        r'\b(ve|ile|icin|ama|cunku)\b', response_text, re.I))
-    en_words = len(re.findall(
-        r'\b(and|with|for|but|because)\b', response_text, re.I))
+    tr_words = len(re.findall(r'\b(ve|ile|icin|ama|cunku)\b', response_text, re.I))
+    en_words = len(re.findall(r'\b(and|with|for|but|because)\b', response_text, re.I))
     mixed = tr_words > 2 and en_words > 2
     details["language_consistency"] = 0.0 if mixed else 1.0
     score += details["language_consistency"] * 0.2
-
     return round(score, 3), details
 
 
 def chat_fn(message, history):
-    """Chat function with intelligence scoring."""
-    from unsloth import FastLanguageModel as FLM
-    FLM.for_inference(model)
+    if model is None:
+        return "Model yuklenmedi. Lutfen bekleyin."
+    try:
+        from unsloth import FastLanguageModel as FLM
+        FLM.for_inference(model)
+    except Exception:
+        pass
 
     sys_prompt = (
         "Dusuncelerini <think></think> etiketleri arasinda yaz. "
@@ -336,21 +379,14 @@ def chat_fn(message, history):
 
     with torch.no_grad():
         out = model.generate(
-            **inputs,
-            max_new_tokens=1024,
-            temperature=0.6,
-            top_p=0.95,
-            do_sample=True,
+            **inputs, max_new_tokens=1024,
+            temperature=0.6, top_p=0.95, do_sample=True,
         )
     response = tokenizer.decode(
-        out[0][inputs["input_ids"].shape[-1]:],
-        skip_special_tokens=True)
+        out[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True)
 
-    # Score the response
     score, details = score_response(response)
-    _chat_scores.append({"q": message, "score": score,
-                         "details": details})
-
+    _chat_scores.append({"q": message, "score": score, "details": details})
     score_bar = "#" * int(score * 20)
     score_display = (
         f"\n\n---\n"
@@ -362,23 +398,21 @@ def chat_fn(message, history):
         f"- Avg Score ({len(_chat_scores)} msgs): "
         f"{sum(s['score'] for s in _chat_scores)/len(_chat_scores):.1%}"
     )
-
     return response + score_display
 
 
+gradio_url_file = "/kaggle/working/gradio_url.txt"
+
 def launch_gradio_thread():
-    """Start Gradio in a background thread."""
     try:
         import gradio as gr
-
         demo = gr.ChatInterface(
             fn=chat_fn,
             title="LLM Dev -- Live Intelligence Chat",
             description=(
                 f"Model: {base_model_name} | "
                 f"LoRA r=32 | Phase 2 GRPO Training Active\n\n"
-                f"Each response is scored for reasoning quality. "
-                f"Watch the Intelligence Score improve during training!"
+                f"Each response is scored for reasoning quality."
             ),
             examples=[
                 "5 + 3 * 2 kactir?",
@@ -388,126 +422,133 @@ def launch_gradio_thread():
                 "Newton'un 3. yasasini acikla.",
             ],
         )
-        demo.launch(share=True, quiet=True)
-        print("[OK] Gradio chat launched (share=True).")
+        # Launch and capture the share URL
+        app, local_url, share_url = demo.launch(share=True, quiet=True)
+        if share_url:
+            log(f"GRADIO_URL={share_url}")
+            with open(gradio_url_file, "w") as f:
+                f.write(share_url)
+        else:
+            log("Gradio launched but no share URL", "WARN")
     except Exception as e:
-        print(f"[WARN] Gradio failed: {e}")
+        log(f"Gradio failed: {e}", "WARN")
 
 
-# Start Gradio in background before training
-gradio_thread = threading.Thread(target=launch_gradio_thread, daemon=True)
-gradio_thread.start()
-print("[OK] Gradio chat starting in background thread...")
-time.sleep(3)  # Give it time to initialize
-
-
-# =====================================================
-# CELL 7: Training Pipeline -- Phase 1 + Phase 2
-# =====================================================
-print("\n" + "=" * 60)
-print("CELL 7: Training Pipeline")
-print("=" * 60)
-
-from scripts.training_phases import phase1_cold_start_sft, phase2_grpo_rl
-
-sonuclar = []
-# memory["activeContext"] is a string, check for phase keyword
-_active_ctx = memory.get("activeContext", "")
-if "phase2" in _active_ctx:
-    aktif_asama = "phase2"
+if model is not None:
+    gradio_thread = threading.Thread(target=launch_gradio_thread, daemon=True)
+    gradio_thread.start()
+    log("Gradio chat starting in background thread...")
+    time.sleep(5)
 else:
-    aktif_asama = "phase1"
+    log("Skipping Gradio — model not loaded.", "WARN")
 
-# Continuous mode: skip Phase 1 if we already have a trained adapter
-has_prev_adapter = onceki_adapter and os.path.exists(str(onceki_adapter))
-if has_prev_adapter:
-    print("[CONTINUOUS] Previous adapter found, skipping Phase 1.")
-    aktif_asama = "phase2"
 
-# --- Phase 1: Cold Start SFT (only on first run) ---
-if aktif_asama in ("phase1", "setup"):
-    print("\n>> Phase 1: Cold Start SFT starting...")
+# =====================================================
+# CELL 7: Training Pipeline -- Phase 2 GRPO
+# =====================================================
+log("=" * 60)
+log("CELL 7: Training Pipeline")
+
+if model is not None:
     try:
-        sonuc1 = phase1_cold_start_sft(
-            model=model,
-            tokenizer=tokenizer,
-            dev_client=dev_client,
-            dev_model=dev_model_name,
-        )
-        sonuclar.append(sonuc1)
-    except Exception as e:
-        print(f"[ERROR] Phase 1 failed: {e}")
-    gc.collect()
-    torch.cuda.empty_cache()
-    print("[OK] Phase 1 completed.")
+        from scripts.training_phases import phase2_grpo_rl
 
-# --- Phase 2: GRPO RL (continuous, runs every restart) ---
-N_GRPO_ROUNDS = 3  # Multiple GRPO rounds per kernel session
-for grpo_round in range(N_GRPO_ROUNDS):
-    print(f"\n>> Phase 2: GRPO Round {grpo_round + 1}/{N_GRPO_ROUNDS}...")
-    try:
-        sonuc2 = phase2_grpo_rl(
-            model=model,
-            tokenizer=tokenizer,
-            dev_client=dev_client,
-            dev_model=dev_model_name,
-        )
-        sonuclar.append(sonuc2)
-    except Exception as e:
-        print(f"[ERROR] GRPO Round {grpo_round + 1} failed: {e}")
-    gc.collect()
-    torch.cuda.empty_cache()
-    print(f"[OK] GRPO Round {grpo_round + 1} completed.")
+        sonuclar = []
+        _active_ctx = memory.get("activeContext", "")
+        aktif_asama = "phase2" if "phase2" in _active_ctx else "phase1"
+        has_prev_adapter = onceki_adapter and os.path.exists(str(onceki_adapter))
+        if has_prev_adapter:
+            log("Previous adapter found, skipping Phase 1.")
+            aktif_asama = "phase2"
+
+        # --- Phase 1: Cold Start SFT (only on first run) ---
+        if aktif_asama in ("phase1", "setup"):
+            log("Phase 1: Cold Start SFT starting...")
+            try:
+                from scripts.training_phases import phase1_cold_start_sft
+                sonuc1 = phase1_cold_start_sft(
+                    model=model, tokenizer=tokenizer,
+                    dev_client=dev_client, dev_model=dev_model_name,
+                )
+                sonuclar.append(sonuc1)
+                log("Phase 1 completed.")
+            except Exception:
+                log_exception("Phase 1")
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        # --- Phase 2: GRPO RL ---
+        N_GRPO_ROUNDS = 3
+        for grpo_round in range(N_GRPO_ROUNDS):
+            log(f"Phase 2: GRPO Round {grpo_round + 1}/{N_GRPO_ROUNDS}...")
+            try:
+                sonuc2 = phase2_grpo_rl(
+                    model=model, tokenizer=tokenizer,
+                    dev_client=dev_client, dev_model=dev_model_name,
+                )
+                sonuclar.append(sonuc2)
+                log(f"GRPO Round {grpo_round + 1} completed.")
+            except Exception:
+                log_exception(f"GRPO Round {grpo_round + 1}")
+            gc.collect()
+            torch.cuda.empty_cache()
+
+    except Exception:
+        log_exception("CELL 7 Training Pipeline")
+        sonuclar = []
+else:
+    log("Skipping training — model not loaded.", "ERROR")
+    sonuclar = []
 
 
 # =====================================================
 # CELL 8: Save Results & HF Upload
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 8: Save Results")
-print("=" * 60)
+log("=" * 60)
+log("CELL 8: Save Results")
 
-from scripts.utils import seans_sonu_kaydet
-
-seans_sonu_kaydet(sonuclar, f"{HF_USER}/{HF_CHAT_REPO}")
-print("[OK] Results saved to GitHub and HF Hub.")
+try:
+    if sonuclar:
+        from scripts.utils import seans_sonu_kaydet
+        seans_sonu_kaydet(sonuclar, f"{HF_USER}/{HF_CHAT_REPO}")
+        log("Results saved to GitHub and HF Hub.")
+    else:
+        log("No results to save.", "WARN")
+except Exception:
+    log_exception("CELL 8")
 
 
 # =====================================================
 # CELL 9: Intelligence Report
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 9: Intelligence Report")
-print("=" * 60)
+log("=" * 60)
+log("CELL 9: Intelligence Report")
 
 if _chat_scores:
     avg = sum(s["score"] for s in _chat_scores) / len(_chat_scores)
-    print(f"Chat interactions: {len(_chat_scores)}")
-    print(f"Average Intelligence Score: {avg:.1%}")
-    print("Per-message scores:")
-    for i, s in enumerate(_chat_scores):
-        print(f"  [{i+1}] {s['score']:.1%} - {s['q'][:50]}...")
+    log(f"Chat interactions: {len(_chat_scores)}")
+    log(f"Average Intelligence Score: {avg:.1%}")
 else:
-    print("No chat interactions recorded.")
+    log("No chat interactions recorded.")
 
 
 # =====================================================
 # CELL 10: Post-Training Chat (Keep Alive)
 # =====================================================
-print("\n" + "=" * 60)
-print("CELL 10: Post-Training Chat (Model Ready)")
-print("=" * 60)
-print("Training complete! The Gradio chat is still active.")
-print("You can now test the GRPO-trained model's reasoning.")
-print("The share link above will remain active.")
+log("=" * 60)
+log("CELL 10: Post-Training Chat (Model Ready)")
+log("Training complete! The Gradio chat is still active.")
 
-# Keep the process alive for chat
+# Keep the process alive for chat (max 30 minutes post-training)
 try:
-    while gradio_thread.is_alive():
-        time.sleep(30)
+    end_time = time.time() + 1800  # 30 minutes
+    while time.time() < end_time:
+        if model is not None and hasattr(gradio_thread, 'is_alive') and gradio_thread.is_alive():
+            time.sleep(30)
+        else:
+            break
 except KeyboardInterrupt:
     pass
 
-print("\n" + "=" * 60)
-print("LLM Dev Pipeline -- Session Complete!")
-print("=" * 60)
+log("=" * 60)
+log("LLM Dev Pipeline -- Session Complete!")
