@@ -66,3 +66,8 @@ def decision_log_guncelle(repo_dir: str, karar: str, gerekce: str):
         mevcut = "# decisionLog.md\n## Mimari Karar Gunlugu\n\n"
     with open(yol, "w", encoding="utf-8") as f:
         f.write(mevcut + yeni_satir)
+
+
+# English aliases for backward compatibility (Kaggle stale cache)
+load_memory_bank = memory_bank_yukle
+format_memory_summary = memory_bank_sistem_prompt_olustur
