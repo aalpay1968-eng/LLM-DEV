@@ -27,7 +27,7 @@ from pathlib import Path
 # Configuration
 # ============================================================
 PROJECT_DIR = Path(r"E:\000 ALPAY Teknoloji\Teknoloji\LLM-DEV")
-KERNEL_SLUG = "adilalpay/llm-dev-v7"
+KERNEL_SLUG = "adilalpay/llm-dev-v8"
 DASHBOARD_PORT = 8585
 CHECK_INTERVAL = 120  # seconds between status checks
 MAX_RESTARTS = 50     # max auto-restarts (safety)

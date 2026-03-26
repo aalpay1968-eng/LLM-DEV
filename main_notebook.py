@@ -74,7 +74,7 @@ import subprocess
 PACKAGES = [
     "unsloth_zoo",
     "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
-    "huggingface_hub", "trl>=0.12", "gradio>=4.0", "openai",
+    "huggingface_hub", "trl>=0.12", "mergekit", "gradio>=4.0", "openai",
     "matplotlib",
 ]
 for pkg in PACKAGES:
