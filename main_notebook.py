@@ -218,7 +218,11 @@ try:
         if cap_major < 7:
             log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Reinstalling Official PyTorch to restore P100 support...", "WARN")
             subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-q", "--force-reinstall",
+                sys.executable, "-m", "pip", "uninstall", "-y",
+                "torch", "torchvision", "torchaudio", "triton"
+            ])
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "-q", "--no-cache-dir",
                 "torch==2.5.1+cu118", "torchvision==0.20.1+cu118", "torchaudio==2.5.1+cu118", "triton",
                 "--index-url", "https://download.pytorch.org/whl/cu118",
             ])
