@@ -75,7 +75,7 @@ PACKAGES = [
     "unsloth_zoo",
     "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
     "huggingface_hub", "trl>=0.12", "mergekit", "llm-blender", "gradio>=4.0", "openai",
-    "matplotlib",
+    "matplotlib", "weave",
 ]
 for pkg in PACKAGES:
     try:
