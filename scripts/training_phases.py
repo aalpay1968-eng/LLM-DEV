@@ -81,7 +81,7 @@ def asama1_cold_start_sft(model, tokenizer, client=None, model_adi=None,
     if len(ham_dataset) == 0:
         print("[WARN] Dataset is empty! Using a fallback dummy dataset to prevent StopIteration.")
         from datasets import Dataset
-        ham_dataset = Dataset.from_list([{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "<think>Hello</think><answer>Hello!</answer>"}]}])
+        ham_dataset = Dataset.from_list([{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "<think>Hello</think><answer>Hello!</answer>"}]}] * 100)
 
     def on_tokenize(ornek):
         if "messages" in ornek:
@@ -91,8 +91,15 @@ def asama1_cold_start_sft(model, tokenizer, client=None, model_adi=None,
             metin = ornek.get("text", "")
         return tokenizer(metin, truncation=True, max_length=MAX_SEQ, padding=False)
 
-    tokenize_ds = ham_dataset.map(on_tokenize, remove_columns=ham_dataset.column_names, num_proc=1)
-    egitim_eval = tokenize_ds.train_test_split(test_size=0.05, seed=42)
+    try:
+        tokenize_ds = ham_dataset.map(on_tokenize, remove_columns=ham_dataset.column_names, num_proc=1)
+        egitim_eval = tokenize_ds.train_test_split(test_size=0.05, seed=42)
+    except Exception as e:
+        print(f"[WARN] Mapping or splitting failed: {e}. Using raw format.")
+        egitim_eval = {"train": ham_dataset, "test": ham_dataset}
+    if tokenize_ds is None:
+        print("[WARN] tokenize_ds is None! Falling back to raw format.")
+        egitim_eval = {"train": ham_dataset, "test": ham_dataset}
 
     from trl import SFTTrainer, SFTConfig
     out_dir = f"{OUTPUTS_DIR}/phase1_cold_start"
