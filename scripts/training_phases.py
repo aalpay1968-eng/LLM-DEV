@@ -78,6 +78,11 @@ def asama1_cold_start_sft(model, tokenizer, client=None, model_adi=None,
     else:
         ham_dataset = _distilabel_cot_uret(client, model_adi, extra_params, n)
 
+    if len(ham_dataset) == 0:
+        print("[WARN] Dataset is empty! Using a fallback dummy dataset to prevent StopIteration.")
+        from datasets import Dataset
+        ham_dataset = Dataset.from_list([{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "<think>Hello</think><answer>Hello!</answer>"}]}])
+
     def on_tokenize(ornek):
         if "messages" in ornek:
             metin = tokenizer.apply_chat_template(
