@@ -88,6 +88,15 @@ for pkg in PACKAGES:
 
 log("Packages ready.")
 
+# Fix llm-blender compatibility with new transformers (TRANSFORMERS_CACHE removed)
+try:
+    import transformers.utils.hub as _hub
+    if not hasattr(_hub, "TRANSFORMERS_CACHE"):
+        _hub.TRANSFORMERS_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
+        log("Patched TRANSFORMERS_CACHE for llm-blender compat.")
+except Exception:
+    pass
+
 import torch
 log(f"PyTorch: {torch.__version__} | CUDA: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
@@ -216,20 +225,25 @@ try:
         log(f"GPU: {gpu_name} (arch: {gpu_arch})")
 
         if cap_major < 7:
-            log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Reinstalling Official PyTorch to restore P100 support...", "WARN")
+            log(f"{gpu_name} ({gpu_arch}) is older than sm_70. Reinstalling optimized PyTorch 2.4 for P100 support...", "WARN")
             subprocess.check_call([
                 sys.executable, "-m", "pip", "uninstall", "-y",
-                "torch", "torchvision", "torchaudio", "triton"
+                "torch", "torchvision", "torchaudio", "triton", "unsloth"
             ])
+            # Use cu121 as it has better legacy architecture support in many distributions
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install", "-q", "--no-cache-dir",
-                "torch==2.5.1+cu118", "torchvision==0.20.1+cu118", "torchaudio==2.5.1+cu118", "triton",
-                "--index-url", "https://download.pytorch.org/whl/cu118",
+                "torch==2.4.0", "torchvision==0.19.0", "torchaudio==2.4.0",
+                "--index-url", "https://download.pytorch.org/whl/cu121",
             ])
             subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-q",
-                "unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git",
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                sys.executable, "-m", "pip", "install", "-q", "--no-deps",
+                "unsloth @ git+https://github.com/unslothai/unsloth.git",
+            ])
+            # Verify version after reinstall
+            import importlib
+            importlib.reload(torch)
+            log(f"Re-verified PyTorch: {torch.__version__} | CUDA: {torch.cuda.is_available()}")
             log("PyTorch restored for P100 compatibility.")
         else:
             log(f"GPU {gpu_name} ({gpu_arch}) is fully compatible.")

@@ -116,7 +116,7 @@ def asama1_cold_start_sft(model, tokenizer, client=None, model_adi=None,
             bf16=torch.cuda.is_bf16_supported(),
             optim="adamw_8bit", lr_scheduler_type="cosine",
             seed=3407, report_to="wandb", max_length=MAX_SEQ,
-            packing=True, assistant_only_loss=True),
+            packing=True, assistant_only_loss=False),
         callbacks=[plot_cb])
     trainer.train()
     trainer.evaluate()
