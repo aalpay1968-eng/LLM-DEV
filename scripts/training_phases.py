@@ -151,6 +151,20 @@ def _distilabel_cot_uret(client, model_adi, extra_params, n=1500):
 
     # Dogrudan API ile uret (distilabel yok ise de calisir)
     mesaj_listesi = _manuel_cot_uret(api_key, base_url, model_adi, extra_params, SISTEM_COT, KONU_LISTESI, n)
+    
+    # [NEW] Curriculum Learning Sorting
+    if mesaj_listesi:
+        from scripts.curriculum import compute_complexity_score
+        def extract_user_prompt(item):
+            for m in item.get("messages", []):
+                if m.get("role") == "user":
+                    return m.get("content", "")
+            return ""
+        
+        print(f"[CURRICULUM] Sorting {len(mesaj_listesi)} items by cognitive complexity...")
+        mesaj_listesi.sort(key=lambda x: compute_complexity_score(extract_user_prompt(x)))
+        print(f"[CURRICULUM] Sorting complete. Complexity ranges from {compute_complexity_score(extract_user_prompt(mesaj_listesi[0])):.3f} to {compute_complexity_score(extract_user_prompt(mesaj_listesi[-1])):.3f}")
+
     return Dataset.from_list(mesaj_listesi) if mesaj_listesi else Dataset.from_list([])
 
 
@@ -219,13 +233,14 @@ def phase2_grpo_rl(model, tokenizer, dev_client=None,
 
 def asama2_grpo_rl(model, tokenizer, train_dataset, ek_odul_fonksiyonlari=None):
     from trl import GRPOConfig, GRPOTrainer
-    from scripts.rewards import odul_format_kontrol, odul_dil_karisikligi_ceza, odul_anac_empati
+    from scripts.rewards import odul_format_kontrol, odul_dil_karisikligi_ceza, odul_anac_empati, odul_bebek_meraki
     from scripts.config import HF_REPO_PHASE2
     from scripts.memory_bank import decision_log_guncelle
 
     out_dir = f"{OUTPUTS_DIR}/phase2_grpo"
     plot_cb = PlotCallback(out_dir)
-    odul_listesi = [odul_format_kontrol, odul_dil_karisikligi_ceza, odul_anac_empati]
+    # [NEW] curiosity/predictive coding reward added to pipeline
+    odul_listesi = [odul_format_kontrol, odul_dil_karisikligi_ceza, odul_anac_empati, odul_bebek_meraki]
     if ek_odul_fonksiyonlari:
         odul_listesi.extend(ek_odul_fonksiyonlari)
 

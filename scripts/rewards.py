@@ -92,3 +92,45 @@ def odul_anac_empati(completions, **kwargs):
         bulunan = sum(1 for kelime in SEFKAT_KELIMELERI if kelime in cevap)
         odullar.append(min(0.6, bulunan * 0.1))
     return odullar
+
+
+def odul_bebek_meraki(completions, **kwargs):
+    """
+    Infant Curiosity & Predictive Coding Reward.
+    Rewards the model for showing curiosity, exploring possibilities,
+    or asking internal questions inside its <think> block BEFORE answering.
+    """
+    import re
+    MERAK_KELIMELERI = [
+        "acaba", "merak", "nedeni", "belki de", "örneğin", "farklı bir bakış", 
+        "nasıl", "neden", "sebebi", "deneyelim", "öğrenelim", "ne olur", 
+        "alternatif", "ihtimal", "varsayalım", "düşünürsek", "beklenmeyen"
+    ]
+    odullar = []
+    for completion in completions:
+        metin = (completion[0]["content"] if isinstance(completion, list) else completion).lower()
+        think_match = re.search(r"<think>(.*?)</think>", metin, re.DOTALL)
+        if not think_match:
+            odullar.append(0.0)
+            continue
+        
+        dusunce = think_match.group(1).strip()
+        
+        # We reward tokens of curiosity and exploration specifically inside <think>
+        # because infants learn by engaging deeply with the unknown
+        puan = 0.0
+        # If there's a question mark in the thought process: (+0.2)
+        if "?" in dusunce:
+            puan += 0.2
+            
+        # If it explores possibilities using curiosity keywords: (+0.1 per word, max 0.6)
+        bulunan = sum(1 for kelime in MERAK_KELIMELERI if kelime in dusunce)
+        puan += min(0.6, bulunan * 0.1)
+        
+        # If the thought process is sufficiently long, indicating deep exploration: (+0.2)
+        # infants learn through continuous trial-and-error reflection
+        if len(re.findall(r'\b\w+\b', dusunce)) > 50:
+            puan += 0.2
+            
+        odullar.append(min(1.0, puan))
+    return odullar
