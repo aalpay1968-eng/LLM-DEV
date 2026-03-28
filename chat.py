@@ -3,6 +3,8 @@ import json
 import time
 import subprocess
 import sys
+import re
+from datetime import datetime
 from pathlib import Path
 
 # Force UTF-8 encoding for Windows terminal output 
@@ -59,9 +61,16 @@ def main():
         with open(REQUEST_FILE, "w", encoding="utf-8") as f:
             json.dump({"question": question, "timestamp": time.time()}, f, indent=2, ensure_ascii=False)
 
-        print("[CHAT] Sending question to Kaggle...")
+        project_start = datetime(2026, 3, 27, 20, 0, 0)
+        hours_developed = max(1, int((datetime.now() - project_start).total_seconds() / 3600))
+
+        print(f"\n[Anaç LLM] Zeka Seviyesi: Gelişmekte (Çocuk Öğrenme Aşaması)")
+        print(f"[Anaç LLM] {hours_developed} saattir büyüyorum ve yeni şeyler öğreniyorum.")
+        print("[Anaç LLM] Sorunu analiz edip düşünüyorum...\n")
+
+        print("[CHAT] Soru Kaggle üzerindeki modele iletiliyor...")
         if git_sync_push():
-            print("[CHAT] Request sent. Waiting for response (this may take up to 15 mins for initial Kaggle load)...")
+            print("[CHAT] Gönderildi. Modelin düşünmesi ve cevap vermesi bekleniyor (Yaklaşık 1-15 dk)...")
             
             # Polling for response
             start_time = time.time()
@@ -74,10 +83,28 @@ def main():
                         with open(RESPONSE_FILE, "r", encoding="utf-8") as f:
                             data = json.load(f)
                         if data.get("question") == question:
-                            print("\nAnaç LLM Yanıtı:")
+                            raw_answer = data.get("answer", "Yanıt bulunamadı.")
+                            print("\n\n" + "=" * 60)
+                            
+                            think_match = re.search(r"<think>(.*?)</think>", raw_answer, re.DOTALL)
+                            if think_match:
+                                think_text = think_match.group(1).strip()
+                                print("--- (İçsel Düşüncelerim / Merakım) ---")
+                                print(think_text)
+                                print("--------------------------------------\n")
+                                raw_answer = re.sub(r"<think>.*?</think>", "", raw_answer, flags=re.DOTALL).strip()
+                                
+                            answer_match = re.search(r"<answer>(.*?)</answer>", raw_answer, re.DOTALL)
+                            if answer_match:
+                                final_answer = answer_match.group(1).strip()
+                            else:
+                                final_answer = raw_answer.strip()
+                                
+                            print("Sana Şefkatli Yanıtım:")
                             print("-" * 40)
-                            print(data.get("answer", "No answer found."))
-                            print("-" * 40)
+                            print(final_answer)
+                            print("=" * 60 + "\n")
+                            
                             found = True
                             # Clean up
                             os.remove(RESPONSE_FILE)
