@@ -47,8 +47,9 @@ def process_request(model, tokenizer):
         print(f"[INTERACT] Processing: {question}")
         
         # Simple chat template
+        from scripts.config import ANAC_SISTEM_PROMPT
         messages = [
-            {"role": "system", "content": "Dusuncelerini <think></think> icinde, cevabini <answer></answer> icinde ver."},
+            {"role": "system", "content": ANAC_SISTEM_PROMPT},
             {"role": "user", "content": question}
         ]
         
