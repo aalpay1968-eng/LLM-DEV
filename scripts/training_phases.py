@@ -5,7 +5,7 @@ import os, torch, random, json, time
 WORKING_DIR = os.environ.get("WORKING_DIR", "/kaggle/working")
 OUTPUTS_DIR = os.environ.get("OUTPUTS_DIR", f"{WORKING_DIR}/outputs")
 REPO_DIR = os.environ.get("REPO_DIR", f"{WORKING_DIR}/repo")
-MAX_SEQ = int(os.environ.get("MAX_SEQ", "4096"))
+MAX_SEQ = int(os.environ.get("MAX_SEQ", "2048"))
 
 
 class PlotCallback:
@@ -111,7 +111,7 @@ def asama1_cold_start_sft(model, tokenizer, client=None, model_adi=None,
         args=SFTConfig(
             output_dir=out_dir,
             per_device_train_batch_size=2, gradient_accumulation_steps=4,
-            warmup_ratio=0.05, max_steps=200, learning_rate=2e-4,
+            warmup_ratio=0.05, max_steps=150, learning_rate=2e-4,
             fp16=not torch.cuda.is_bf16_supported(),
             bf16=torch.cuda.is_bf16_supported(),
             optim="adamw_8bit", lr_scheduler_type="cosine",
@@ -134,16 +134,16 @@ def asama1_cold_start_sft(model, tokenizer, client=None, model_adi=None,
 
 def _distilabel_cot_uret(client, model_adi, extra_params, n=1500):
     from datasets import Dataset
-    from scripts.config import DEVELOPER_APIS
+    from scripts.config import DEVELOPER_APIS, ANAC_SISTEM_PROMPT
 
-    SISTEM_COT = ("Dusuncelerini <think></think> etiketleri arasinda yaz. "
-                  "Nihai cevabini <answer></answer> icinde ver.")
+    SISTEM_COT = ANAC_SISTEM_PROMPT
     KONU_LISTESI = [
-        "Basit aritmetik: {a} + {b} * {c} kactir?",
-        "Mantik: Eger A dogruysa B dogru, B dogruysa C dogru. A dogruysa C dogru mudur?",
-        "Python hatasi bul: for i in range(10) print(i)",
-        "Kume: {a}, {b}, {c} sayilarinin EBOB nedir?",
-        "Siralama: {a}, {c}, {b} kucukten buyuge sirala.",
+        "Kendimi çok başarısız hissediyorum, ne yapmalıyım?",
+        "Bugün işte büyük bir hata yaptım ve çok üzgünüm. Lütfen bana yardım et.",
+        "Nereden başlayacağımı bilmiyorum, içimde hiç güç kalmadı.",
+        "Herkes benden daha iyi, kendimi çok yetersiz hissediyorum.",
+        "Sürekli 'hayır' diyemediğim için kullanıldığımı hissediyorum. Ne yapmalıyım?",
+        "Zorluklar karşısında pes etmek üzereyim. Bana bir akıl ver."
     ]
     cfg_match = next((cfg for cfg in DEVELOPER_APIS if cfg["model"] == model_adi), DEVELOPER_APIS[0])
     api_key = os.environ.get(cfg_match["key_secret"], "")
@@ -198,38 +198,34 @@ def phase2_grpo_rl(model, tokenizer, dev_client=None,
     if train_dataset is None:
         # Generate quick GRPO dataset from Phase 1 CoT prompts
         from datasets import Dataset
-        from scripts.config import DEVELOPER_APIS
+        from scripts.config import DEVELOPER_APIS, ANAC_SISTEM_PROMPT
         SORULAR = [
-            "5 + 3 * 2 kactir?",
-            "Python'da bir listeyi ters ceviren fonksiyon yaz.",
-            "Eger A>B ve B>C ise A>C midir? Neden?",
-            "12, 18, 24 sayilarinin EBOB'u nedir?",
-            "Fibonacci serisinin 10. elemani nedir?",
-            "Bir ucgenin ic acilari toplami kac derecedir?",
-            "x^2 - 5x + 6 = 0 denkleminin kokleri nedir?",
-            "TCP ve UDP arasindaki fark nedir?",
-            "Merge sort algoritmasinin zaman karmasikligi nedir?",
-            "Newton'un 3. yasasini acikla.",
+            "Bugün kendimi çok değersiz hissediyorum, bana iyi gelecek bir şeyler söyler misin?",
+            "İş hayatında sürekli stres altındayım ve tükenmiş hissediyorum.",
+            "Sevdiğim biri beni hayal kırıklığına uğrattı. Nasıl aşabilirim?",
+            "Kendimi hiçbir yere ait hissetmiyorum. Lütfen bana yol göster.",
+            "En yakın arkadaşımla kavga ettim ve çok kırgınım. Sence nasıl yaklaşmalıyım?",
+            "Hayallerimden çok uzağım ve pes etmek üzereyim."
         ]
         ds_list = []
         for s in SORULAR:
             ds_list.append({"prompt": [
-                {"role": "system", "content": "Dusuncelerini <think></think> icinde yaz. Cevabini <answer></answer> icinde ver."},
+                {"role": "system", "content": ANAC_SISTEM_PROMPT},
                 {"role": "user", "content": s}]})
-        train_dataset = Dataset.from_list(ds_list * 20)  # 200 samples
+        train_dataset = Dataset.from_list(ds_list * 20)  # 120 samples
     return asama2_grpo_rl(model, tokenizer, train_dataset,
                           ek_odul_fonksiyonlari=kwargs.get("ek_odul_fonksiyonlari"))
 
 
 def asama2_grpo_rl(model, tokenizer, train_dataset, ek_odul_fonksiyonlari=None):
     from trl import GRPOConfig, GRPOTrainer
-    from scripts.rewards import odul_format_kontrol, odul_matematik_dogruluk, odul_dil_karisikligi_ceza
+    from scripts.rewards import odul_format_kontrol, odul_dil_karisikligi_ceza, odul_anac_empati
     from scripts.config import HF_REPO_PHASE2
     from scripts.memory_bank import decision_log_guncelle
 
     out_dir = f"{OUTPUTS_DIR}/phase2_grpo"
     plot_cb = PlotCallback(out_dir)
-    odul_listesi = [odul_format_kontrol, odul_matematik_dogruluk, odul_dil_karisikligi_ceza]
+    odul_listesi = [odul_format_kontrol, odul_dil_karisikligi_ceza, odul_anac_empati]
     if ek_odul_fonksiyonlari:
         odul_listesi.extend(ek_odul_fonksiyonlari)
 
@@ -246,10 +242,10 @@ def asama2_grpo_rl(model, tokenizer, train_dataset, ek_odul_fonksiyonlari=None):
         per_device_train_batch_size=1, gradient_accumulation_steps=4,
         learning_rate=5e-6, adam_beta1=0.9, adam_beta2=0.99,
         weight_decay=0.1, warmup_ratio=0.1, lr_scheduler_type="cosine",
-        optim="adamw_8bit", num_generations=6,
+        optim="adamw_8bit", num_generations=4,
         max_prompt_length=MAX_SEQ // 2,
         max_completion_length=MAX_SEQ // 2,
-        max_steps=200, max_grad_norm=0.1, save_steps=50,
+        max_steps=100, max_grad_norm=0.1, save_steps=50,
         logging_steps=5, report_to="wandb", seed=3407)
     if ornekleme_params:
         grpo_kwargs["vllm_sampling_params"] = ornekleme_params

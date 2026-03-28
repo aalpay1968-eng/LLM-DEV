@@ -54,7 +54,7 @@ print("[OK] Repo klonlandi, path ayarlandi.")
 import torch
 from unsloth import FastLanguageModel
 
-MAX_SEQ = 4096
+MAX_SEQ = 2048
 os.environ["MAX_SEQ"] = str(MAX_SEQ)
 
 model, tokenizer = FastLanguageModel.from_pretrained(
@@ -67,9 +67,9 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 
 model = FastLanguageModel.get_peft_model(
     model,
-    r=32,
+    r=16,
     target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
-    lora_alpha=32, lora_dropout=0, bias="none",
+    lora_alpha=16, lora_dropout=0, bias="none",
     use_gradient_checkpointing="unsloth", random_state=42,
 )
 
@@ -134,16 +134,18 @@ print("[OK] GitHub & HF Hub'a yedekleme tamamlandi.")
 """
 
 # ?????????????????????????????????????????????
-# CELL 8: Chat Arayuzu (Gradio)
+# CELL 8: Chat Arayuzu (Gradio + Git-Sync)
 # ?????????????????????????????????????????????
 """
 import gradio as gr
+import threading
 from unsloth import FastLanguageModel
 
 FastLanguageModel.for_inference(model)
 
 def chat_fn(message, history):
-    messages = [{"role":"system","content":"Dusunme surecini <think></think> icinde, cevabini <answer></answer> icinde ver."}]
+    from scripts.config import ANAC_SISTEM_PROMPT
+    messages = [{"role":"system","content":ANAC_SISTEM_PROMPT}]
     for h in history:
         messages.append({"role":"user","content":h[0]})
         if h[1]: messages.append({"role":"assistant","content":h[1]})
@@ -155,6 +157,21 @@ def chat_fn(message, history):
         out = model.generate(**inputs, max_new_tokens=1024, temperature=0.6, top_p=0.95, do_sample=True)
     return tokenizer.decode(out[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True)
 
+# 1. Gradio (Interactive mode icin)
 demo = gr.ChatInterface(fn=chat_fn, title="? LLM Gelistiren LLM")
-demo.launch(share=True)
+demo.launch(share=True, inline=True)
+
+# 2. Git-Sync Chat (Background mode / Local Chat CLI icin)
+try:
+    from scripts.interact import interaction_loop
+    interact_thread = threading.Thread(
+        target=interaction_loop, 
+        args=(model, tokenizer), 
+        kwargs={"interval": 30},
+        daemon=True
+    )
+    interact_thread.start()
+    print("[OK] Git-Sync interaction thread baslatildi.")
+except Exception as e:
+    print(f"[WARN] Git-Sync baslatilamadi: {e}")
 """

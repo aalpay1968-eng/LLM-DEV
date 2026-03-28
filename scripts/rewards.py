@@ -65,3 +65,30 @@ def odul_dil_karisikligi_ceza(completions, **kwargs):
         karisik = tr_kelimeler > 2 and en_kelimeler > 2
         odullar.append(-0.3 if karisik else 0.0)
     return odullar
+
+
+def odul_anac_empati(completions, **kwargs):
+    """
+    Anaç/Şefkatli LLM için Empati ve Destek Odülü.
+    Yanıtın destekleyici, cesaretlendirici kelimelerini içerip içermediğini kontrol eder.
+    """
+    import re
+    SEFKAT_KELIMELERI = [
+        "canım", "yanındayım", "hissediyorum", "anlıyorum", "geçecek", 
+        "değerlisin", "beraber", "harikasın", "güçlüsün", "üzülme",
+        "destek", "merak etme", "korkma", "mutlu", "hata", "öğrenme", "sarılıyorum",
+        "kıyamam", "canını sıkma", "gurur"
+    ]
+    odullar = []
+    for completion in completions:
+        metin = (completion[0]["content"] if isinstance(completion, list) else completion).lower()
+        answer_match = re.search(r"<answer>(.*?)</answer>", metin, re.DOTALL)
+        if not answer_match:
+            odullar.append(0.0)
+            continue
+        cevap = answer_match.group(1).strip()
+        
+        # Kelime bazli empati basarisi (0.1 points per word, max 0.6)
+        bulunan = sum(1 for kelime in SEFKAT_KELIMELERI if kelime in cevap)
+        odullar.append(min(0.6, bulunan * 0.1))
+    return odullar
