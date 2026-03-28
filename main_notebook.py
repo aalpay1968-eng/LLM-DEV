@@ -470,13 +470,10 @@ else:
     log("Skipping Gradio — model not loaded.", "WARN")
 
 
-# =====================================================
-# CELL 7: Training Pipeline -- Phase 2 GRPO
-# =====================================================
-log("=" * 60)
-log("CELL 7: Training Pipeline")
+# Set this to True for fast connectivity tests (skips 30min training)
+SKIP_TRAINING = os.environ.get("SKIP_TRAINING", "1") == "1"
 
-if model is not None:
+if model is not None and not SKIP_TRAINING:
     try:
         from scripts.training_phases import phase2_grpo_rl
 
