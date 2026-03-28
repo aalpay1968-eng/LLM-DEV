@@ -381,13 +381,12 @@ def score_response(response_text):
 
 
 def chat_fn(message, history):
-    if model is None:
-        return "Model yuklenmedi. Lutfen bekleyin."
-    try:
-        from unsloth import FastLanguageModel as FLM
-        FLM.for_inference(model)
-    except Exception:
-        pass
+    # Disable fast inference for now to avoid shape mismatch errors
+    # try:
+    #     from unsloth import FastLanguageModel as FLM
+    #     FLM.for_inference(model)
+    # except Exception:
+    #     pass
 
     sys_prompt = (
         "Dusuncelerini <think></think> etiketleri arasinda yaz. "
