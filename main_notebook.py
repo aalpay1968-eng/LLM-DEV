@@ -271,13 +271,23 @@ try:
     MAX_SEQ = 4096
     os.environ["MAX_SEQ"] = str(MAX_SEQ)
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=base_model_name,
-        max_seq_length=MAX_SEQ,
-        load_in_4bit=True,
-        dtype=None,
-        trust_remote_code=True,
-    )
+    import time
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=base_model_name,
+                max_seq_length=MAX_SEQ,
+                load_in_4bit=True,
+                dtype=None,
+                trust_remote_code=True,
+            )
+            break
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            log(f"Model load attempt {attempt+1} failed: {e}. Retrying in 30s...", "WARN")
+            time.sleep(30)
 
     if onceki_adapter and os.path.exists(str(onceki_adapter)):
         try:
