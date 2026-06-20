@@ -1,12 +1,27 @@
+```gitignore
+# Dependencies
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+
+# Environment
 .env
-*.gguf
-*.bin
-*.safetensors
-outputs/
-*.egg-info/
+.env.local
+*.env.*
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
 dist/
 build/
-.ipynb_checkpoints/
+*.egg-info/
+```
